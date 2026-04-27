@@ -1,0 +1,16 @@
+---
+description: KIO CSV, fields, batch operations and restore point rules
+globs: ["backend/**", "frontend/src/features/kio/**", ".ai/docs/项目计划.md"]
+alwaysApply: false
+---
+
+Before editing KIO behavior, read:
+- `AGENTS.md`
+- `MEMORY.md`
+- `.ai/instructions/kio-domain.md`
+
+Rules:
+- Preserve all CSV fields.
+- Preview batch operations before applying.
+- Keep BIT address increment semantics exact.
+

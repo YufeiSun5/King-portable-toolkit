@@ -1,0 +1,13 @@
+/* 文件说明：GitHub Dark 辅助样式，提供可复用表面和焦点样式。
+   联动全部 React 组件和 GitHub Dark 主题规范。 */
+
+.github-dark-surface {
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+}
+
+.github-dark-focus:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+

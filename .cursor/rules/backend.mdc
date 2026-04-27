@@ -1,0 +1,16 @@
+---
+description: Backend Go, Wails, SQLite rules
+globs: ["**/*.go", "backend/**", "main.go", "app.go"]
+alwaysApply: false
+---
+
+Before editing these files, read:
+- `AGENTS.md`
+- `MEMORY.md`
+- `.ai/instructions/backend.md`
+
+Rules:
+- Keep Wails Binding methods serializable.
+- Use SQLite as the source of truth after import.
+- Use transactions for multi-table writes.
+

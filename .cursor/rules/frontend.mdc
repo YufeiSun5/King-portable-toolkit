@@ -1,0 +1,16 @@
+---
+description: Frontend React, TypeScript, GitHub Dark UI rules
+globs: ["frontend/src/**/*.ts", "frontend/src/**/*.tsx", "frontend/src/**/*.css"]
+alwaysApply: false
+---
+
+Before editing these files, read:
+- `AGENTS.md`
+- `MEMORY.md`
+- `.ai/instructions/frontend.md`
+
+Rules:
+- Keep the first screen as a usable workbench.
+- Use compact GitHub Dark UI.
+- Prefer `lucide-react` icons.
+

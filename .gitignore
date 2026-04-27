@@ -1,0 +1,17 @@
+.vfox/sdks/
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/package.json.md5
+dist/
+build/bin/
+build/darwin/
+build/linux/
+coverage/
+*.log
+.devlogs/
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
+Thumbs.db

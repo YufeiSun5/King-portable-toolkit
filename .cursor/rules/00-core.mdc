@@ -1,0 +1,15 @@
+---
+description: Core project navigation and AI workflow
+globs: ["**/*"]
+alwaysApply: true
+---
+
+Read `AGENTS.md` first, then `MEMORY.md` and the relevant `.ai/instructions/` file.
+
+Rules:
+- Treat `.ai/` as the source of truth for project rules.
+- Prefer source and build configuration over older docs.
+- Mark uncertain decisions with `<!-- 待确认 -->`.
+- Update `MEMORY.md` after meaningful changes.
+- Use Simplified Chinese for user-facing text and docs.
+

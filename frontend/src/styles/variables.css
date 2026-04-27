@@ -1,0 +1,20 @@
+/* 文件说明：GitHub Dark 主题变量，集中维护颜色、边框和阴影语义。
+   联动全部 React 组件和 GitHub Dark 主题规范。 */
+
+:root {
+  color-scheme: dark;
+  --bg: #0d1117;
+  --bg-muted: #161b22;
+  --bg-subtle: #21262d;
+  --border: #30363d;
+  --border-strong: #484f58;
+  --text: #e6edf3;
+  --text-muted: #8b949e;
+  --accent: #2f81f7;
+  --accent-strong: #58a6ff;
+  --success: #3fb950;
+  --warning: #d29922;
+  --danger: #f85149;
+  --shadow: 0 12px 28px rgb(1 4 9 / 42%);
+}
+

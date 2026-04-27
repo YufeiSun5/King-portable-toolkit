@@ -1,0 +1,12 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "king-portable-toolkit",
+  "outputfilename": "便携工具包",
+  "frontend:install": "node scripts/ensure-deps.mjs",
+  "frontend:build": "node scripts/build.mjs",
+  "frontend:dev:watcher": "node scripts/dev.mjs",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "King portable toolkit"
+  }
+}
