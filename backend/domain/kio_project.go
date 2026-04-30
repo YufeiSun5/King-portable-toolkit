@@ -20,6 +20,8 @@ type KioCsvHeader struct {
 
 type KioVariable struct {
 	ID              string            `json:"id"`
+	ProjectID       string            `json:"projectId"`
+	FolderID        string            `json:"folderId"`
 	CsvFileID       string            `json:"csvFileId"`
 	RowIndex        int               `json:"rowIndex"`
 	TagID           string            `json:"tagId"`

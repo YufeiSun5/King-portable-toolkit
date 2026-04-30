@@ -8,12 +8,17 @@ import {
   DeleteCsvFile,
   DeleteFolder,
   DeleteProject,
+  GetDeviceMacAddress,
   GetFieldMetadata,
+  GetKioProject,
   LoadWorkspaceTree,
   RenameCsvFile,
   RenameFolder,
   RenameProject,
+  SaveKioExportFiles,
+  SaveImportedKioCsv,
 } from '../../wailsjs/go/api/AppAPI';
+import type { KioVariable } from '../features/kio/types/kio';
 
 export function hasWailsRuntime() {
   return typeof window !== 'undefined' && Boolean((window as Window & { go?: unknown }).go);
@@ -31,6 +36,34 @@ export async function loadFieldMetadataSafe() {
     return [];
   }
   return GetFieldMetadata();
+}
+
+export async function getDeviceMacAddressSafe() {
+  if (!hasWailsRuntime()) {
+    return browserDeviceAddress();
+  }
+  return GetDeviceMacAddress();
+}
+
+export async function loadKioProjectSafe(csvFileId: string) {
+  if (!hasWailsRuntime()) {
+    return null;
+  }
+  return GetKioProject(csvFileId);
+}
+
+export async function saveKioExportFilesSafe(files: Array<{ relativePath: string; downloadName: string; content: string }>) {
+  if (!hasWailsRuntime()) {
+    return null;
+  }
+  return SaveKioExportFiles(files);
+}
+
+export async function saveImportedKioCsvSafe(csvFileId: string, headers: string[], rows: KioVariable[]) {
+  if (!hasWailsRuntime()) {
+    return null;
+  }
+  return SaveImportedKioCsv(csvFileId, headers, rows as never);
 }
 
 export async function createProjectSafe(name: string, description: string) {
@@ -82,4 +115,18 @@ export async function deleteNodeSafe(nodeType: 'project' | 'folder' | 'csv', nod
     return;
   }
   await DeleteCsvFile(nodeId);
+}
+
+function browserDeviceAddress() {
+  if (typeof window === 'undefined') {
+    return '浏览器调试';
+  }
+  const key = 'king-portable-toolkit.device-address.v1';
+  const existing = window.localStorage.getItem(key);
+  if (existing) {
+    return existing;
+  }
+  const value = Array.from({ length: 6 }, () => Math.floor(Math.random() * 256).toString(16).padStart(2, '0')).join(':').toUpperCase();
+  window.localStorage.setItem(key, value);
+  return value;
 }

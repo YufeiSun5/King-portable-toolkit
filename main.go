@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 
 	"king-portable-toolkit/backend/api"
@@ -18,6 +19,7 @@ var assets embed.FS
 
 func main() {
 	app := NewApp()
+	appAPI := api.NewAppAPI(app.database())
 
 	err := wails.Run(&options.App{
 		Title:  "便携工具包",
@@ -26,11 +28,14 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		OnStartup:  app.Startup,
+		OnStartup: func(ctx context.Context) {
+			app.Startup(ctx)
+			appAPI.Startup(ctx)
+		},
 		OnShutdown: app.Shutdown,
 		Bind: []interface{}{
 			app,
-			api.NewAppAPI(app.database()),
+			appAPI,
 		},
 	})
 	if err != nil {

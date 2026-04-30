@@ -212,6 +212,38 @@ export namespace domain {
 	        this.columnName = source["columnName"];
 	    }
 	}
+	export class KioExportFileRequest {
+	    relativePath: string;
+	    downloadName: string;
+	    content: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new KioExportFileRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.relativePath = source["relativePath"];
+	        this.downloadName = source["downloadName"];
+	        this.content = source["content"];
+	    }
+	}
+	export class KioExportFileResult {
+	    relativePath: string;
+	    filePath: string;
+	    rowCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new KioExportFileResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.relativePath = source["relativePath"];
+	        this.filePath = source["filePath"];
+	        this.rowCount = source["rowCount"];
+	    }
+	}
 	export class KioFieldMetadata {
 	    columnName: string;
 	    displayName: string;
@@ -266,6 +298,8 @@ export namespace domain {
 	}
 	export class KioVariable {
 	    id: string;
+	    projectId: string;
+	    folderId: string;
 	    csvFileId: string;
 	    rowIndex: number;
 	    tagId: string;
@@ -292,6 +326,8 @@ export namespace domain {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
+	        this.projectId = source["projectId"];
+	        this.folderId = source["folderId"];
 	        this.csvFileId = source["csvFileId"];
 	        this.rowIndex = source["rowIndex"];
 	        this.tagId = source["tagId"];

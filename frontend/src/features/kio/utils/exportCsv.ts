@@ -3,6 +3,7 @@
 
 import type { CsvNode, FolderNode, ProjectNode, SelectedTreeNode } from '../../workspace/workspaceStore';
 import type { KioFieldMetadata, KioVariable } from '../types/kio';
+import { isKioNameColumn, sanitizeKioName } from './kioNameRules';
 import { readKioCell } from './rowValue';
 
 export type KioExportFile = {
@@ -163,6 +164,9 @@ function findCsvInFolders(folders: FolderNode[], csvId: string): CsvNode | null 
 
 function readKioExportCell(row: KioVariable, columnName: string) {
   const rawValue = readKioCell(row, columnName);
+  if (isKioNameColumn(columnName)) {
+    return sanitizeKioName(rawValue || defaultExportValue(row, columnName));
+  }
   if (rawValue) {
     return normalizeExportValue(columnName, rawValue);
   }

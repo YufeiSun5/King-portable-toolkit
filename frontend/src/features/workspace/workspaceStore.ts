@@ -252,7 +252,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     const file: CsvNode = normalizeCsv((persisted as CsvNode | null) ?? { id: nextNodeId('csv'), name: finalName, rowCount, columnCount: 51 });
     const nextFile = { ...file, rowCount, columnCount: 51 };
     set((state) => ({
-      projects: state.projects.map((project) => {
+      projects: persistLocalProjects(state.projects.map((project) => {
         if (project.id !== projectId) {
           return project;
         }
@@ -260,7 +260,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
           return { ...project, files: [...safeFiles(project.files), nextFile] };
         }
         return { ...project, folders: addCsv(project.folders, folderId, nextFile) };
-      }),
+      })),
       selectedNode: csvSelection(nextFile, projectId, folderId),
       expandedNodeIds: {
         ...state.expandedNodeIds,
@@ -438,6 +438,11 @@ function saveLocalProjects(projects: ProjectNode[]) {
   window.localStorage.setItem(localWorkspaceKey, JSON.stringify({ projects }));
 }
 
+function persistLocalProjects(projects: ProjectNode[]) {
+  saveLocalProjects(projects);
+  return projects;
+}
+
 function seedExpanded(projects: ProjectNode[], current: Record<string, boolean>): Record<string, boolean> {
   const next = { ...current };
   projects.forEach((project) => {
@@ -448,8 +453,9 @@ function seedExpanded(projects: ProjectNode[], current: Record<string, boolean>)
 }
 
 function seedFolderExpanded(folder: FolderNode, expanded: Record<string, boolean>, open: boolean) {
-  expanded[folder.id] = expanded[folder.id] ?? open;
-  folder.folders.forEach((child) => seedFolderExpanded(child, expanded, false));
+  const shouldOpen = open || safeFiles(folder.files).length > 0 || folder.depth < 2;
+  expanded[folder.id] = expanded[folder.id] ?? shouldOpen;
+  folder.folders.forEach((child) => seedFolderExpanded(child, expanded, shouldOpen && child.depth < 2));
 }
 
 function nodeExists(projects: ProjectNode[], selected: SelectedTreeNode): boolean {

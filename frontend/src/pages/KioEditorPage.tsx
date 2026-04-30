@@ -26,14 +26,15 @@ import { buildKioExportFiles } from '../features/kio/utils/exportCsv';
 import { filterRowsByScopeAndSearch } from '../features/kio/utils/filterRows';
 import { parseKioCsvText, readTextFile } from '../features/kio/utils/importCsv';
 import { RestorePointGraph } from '../features/restore-point/components/RestorePointGraph';
+import { kioNameInvalidCharsText } from '../features/kio/utils/kioNameRules';
 import type { FolderNode, ProjectNode } from '../features/workspace/workspaceStore';
 import { useWorkspaceStore } from '../features/workspace/workspaceStore';
 import { useDialogStore } from '../stores/dialogStore';
+import { getDeviceMacAddressSafe, saveImportedKioCsvSafe, saveKioExportFilesSafe } from '../utils/wails';
 
 export function KioEditorPage() {
   const {
     rows,
-    savedRows,
     saveHistory,
     selectedRowId,
     manualSelectedRowIds,
@@ -48,6 +49,7 @@ export function KioEditorPage() {
     copyVariablesToFolder,
     importRows,
     loadMetadata,
+    loadCsvRows,
     setColumnVisible,
     setSearchText,
     addSearchCondition,
@@ -73,6 +75,7 @@ export function KioEditorPage() {
   const [conditionColumn, setConditionColumn] = useState('TagName');
   const [conditionOperator, setConditionOperator] = useState<SearchCondition['operator']>('like');
   const [conditionValue, setConditionValue] = useState('');
+  const [deviceAddress, setDeviceAddress] = useState('未知MAC');
   const downloadRef = useRef<HTMLAnchorElement | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const hasDirtyChanges = tableDirty || workspaceDirty;
@@ -80,6 +83,16 @@ export function KioEditorPage() {
   useEffect(() => {
     void loadMetadata();
   }, [loadMetadata]);
+
+  useEffect(() => {
+    void getDeviceMacAddressSafe().then(setDeviceAddress);
+  }, []);
+
+  useEffect(() => {
+    if (selectedNode.type === 'csv') {
+      void loadCsvRows(selectedNode.id);
+    }
+  }, [loadCsvRows, selectedNode.id, selectedNode.type]);
 
   const commonMetadata = useMemo(
     () => metadata.filter((field) => field.isCommon).sort((a, b) => a.sortOrder - b.sortOrder),
@@ -91,7 +104,6 @@ export function KioEditorPage() {
     [rows, selectedNode, searchText, projects, searchConditions],
   );
   const restoreCurrentRows = useMemo(() => filterRowsByScopeAndSearch(rows, selectedNode, '', projects, []), [rows, selectedNode, projects]);
-  const restoreSavedRows = useMemo(() => filterRowsByScopeAndSearch(savedRows, selectedNode, '', projects, []), [savedRows, selectedNode, projects]);
   const visibleRowIds = useMemo(() => visibleRows.map((row) => row.id), [visibleRows]);
   const manualVisibleRowIds = useMemo(() => manualSelectedRowIds.filter((rowId) => visibleRowIds.includes(rowId)), [manualSelectedRowIds, visibleRowIds]);
   const effectiveRowIds = manualVisibleRowIds.length ? manualVisibleRowIds : visibleRowIds;
@@ -99,22 +111,44 @@ export function KioEditorPage() {
   const selectedCopyTarget = copyTargets.find((target) => target.folderId === copyTargetFolderId) ?? copyTargets[0];
 
   const runValidate = () => {
-    const result = validateRows();
+    const result = validateRows(visibleRows);
+    const hiddenErrorCount = Math.max(result.errors.length - 12, 0);
+    const hiddenWarningCount = Math.max(result.warnings.length - 8, 0);
     showInfo({
       title: '校验结果',
       message: [
+        `校验范围：${selectedNode.name} · 当前显示 ${visibleRows.length} 行`,
+        `KIO 名称禁止字符：${kioNameInvalidCharsText}`,
         `错误：${result.errors.length}`,
         `警告：${result.warnings.length}`,
-        ...result.errors.slice(0, 5),
-        ...result.warnings.slice(0, 5),
-      ].join('\n'),
+        ...result.errors.slice(0, 12),
+        hiddenErrorCount ? `还有 ${hiddenErrorCount} 条错误未显示` : '',
+        ...result.warnings.slice(0, 8),
+        hiddenWarningCount ? `还有 ${hiddenWarningCount} 条警告未显示` : '',
+      ].filter(Boolean).join('\n'),
     });
   };
 
-  const runExport = () => {
+  const runExport = async () => {
     const files = buildKioExportFiles(rows, projects, selectedNode, metadata);
     if (!files.length) {
       showInfo({ title: '没有可导出的 CSV', message: '当前选中的层级下面还没有 CSV 功能节点。' });
+      return;
+    }
+    const savedFiles = await saveKioExportFilesSafe(files.map((file) => ({ relativePath: file.relativePath, downloadName: file.downloadName, content: file.content })));
+    if (savedFiles) {
+      if (!savedFiles.length) {
+        showInfo({ title: '已取消导出', message: '没有选择导出目录，未生成 CSV 文件。' });
+        return;
+      }
+      showInfo({
+        title: '导出完成',
+        message: [
+          `已按 GB18030 写入 ${savedFiles.length} 个 CSV，可直接导入 KIO。`,
+          ...savedFiles.slice(0, 8).map((file) => `${file.relativePath} · ${file.rowCount} 行`),
+          savedFiles[0]?.filePath ? `目录：${exportDirectory(savedFiles[0].filePath)}` : '',
+        ].filter(Boolean).join('\n'),
+      });
       return;
     }
     files.forEach((file, index) => {
@@ -123,7 +157,7 @@ export function KioEditorPage() {
     showInfo({
       title: '导出完成',
       message: [
-        `已按${nodeTypeText(selectedNode.type)}层级导出 ${files.length} 个 CSV，导出列始终为全量字段。`,
+        `当前是浏览器调试模式，已用 UTF-8 下载 ${files.length} 个 CSV；KIO 桌面导入请用 Wails 应用里的导出，后端会写 GB18030。`,
         ...files.slice(0, 8).map((file) => `${file.relativePath} · ${file.rowCount} 行`),
       ].join('\n'),
     });
@@ -147,7 +181,9 @@ export function KioEditorPage() {
       }
       const csvFile = await createImportedCsv(target.projectId, target.folderId, file.name, preview.rows.length);
       const parsed = parseKioCsvText(text, { projectId: target.projectId, folderId: target.folderId, csvFileId: csvFile.id });
+      await saveImportedKioCsvSafe(csvFile.id, parsed.headers, parsed.rows);
       importRows(parsed.rows, csvFile.name);
+      void loadCsvRows(csvFile.id);
       showInfo({
         title: '导入完成',
         message: [`已导入：${csvFile.name}`, `变量数：${parsed.rows.length}`, `字段数：${parsed.headers.length}`, csvFile.name !== file.name ? `同名文件已自动命名为：${csvFile.name}` : ''].filter(Boolean).join('\n'),
@@ -173,7 +209,7 @@ export function KioEditorPage() {
 
   const runSave = (mode: 'current' | 'all') => {
     setShowSaveMenu(false);
-    markTableSaved(mode === 'current' ? '保存当前文件' : '保存全部', selectedNode.name);
+    markTableSaved(mode === 'current' ? '保存当前文件' : '保存全部', selectedNode.name, mode === 'current' ? restoreCurrentRows : rows, deviceAddress);
     markWorkspaceSaved();
     showInfo({
       title: mode === 'current' ? '保存当前文件' : '保存全部',
@@ -282,7 +318,7 @@ export function KioEditorPage() {
               <Button icon={<CheckCircle2 size={15} />} onClick={runValidate}>
                 校验
               </Button>
-              <Button icon={<Download size={15} />} onClick={runExport}>
+                <Button icon={<Download size={15} />} onClick={() => void runExport()}>
                 导出
               </Button>
               <Button
@@ -334,7 +370,6 @@ export function KioEditorPage() {
         <RestorePointGraph
           currentName={selectedNode.name}
           currentRows={restoreCurrentRows}
-          savedRows={restoreSavedRows}
           saveHistory={saveHistory.map((entry) => ({
             ...entry,
             rows: filterRowsByScopeAndSearch(entry.rows, selectedNode, '', projects, []),
@@ -363,12 +398,17 @@ export function KioEditorPage() {
         <span>显示变量：{visibleRows.length}</span>
         <span>选择：{manualVisibleRowIds.length ? `手动 ${manualVisibleRowIds.length}` : `默认可见全部 ${visibleRows.length}`}</span>
         <span>搜索：{searchText || searchConditions.length ? `${searchText || '条件筛选'} · ${searchConditions.length} 条件` : '无'}</span>
-        <span>右键列头可执行自动填充、批量替换、编号递增、BIT 地址递增</span>
+        <span>右键列头或单元格可执行自动填充、批量替换、编号递增/递减、BIT 地址递增</span>
       </footer>
       <input ref={importInputRef} type="file" accept=".csv,.txt,text/csv,text/plain" style={{ display: 'none' }} onChange={(event) => void handleImportFile(event.target.files?.[0])} />
       <a ref={downloadRef} style={{ display: 'none' }} />
     </>
   );
+}
+
+function exportDirectory(filePath: string) {
+  const index = Math.max(filePath.lastIndexOf('\\'), filePath.lastIndexOf('/'));
+  return index > 0 ? filePath.slice(0, index) : filePath;
 }
 
 function importTarget(selectedNode: ReturnType<typeof useWorkspaceStore.getState>['selectedNode']) {

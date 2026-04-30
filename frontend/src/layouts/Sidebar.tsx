@@ -2,7 +2,7 @@
 // 联动 KioEditorPage、workspaceStore 和全局样式。
 
 import { type MouseEvent, useEffect, useState } from 'react';
-import { ChevronDown, ChevronRight, FileSpreadsheet, Folder, FolderOpen, Loader2, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, FileSpreadsheet, Folder, FolderOpen, Loader2, Plus, RefreshCw, RotateCcw, Trash2 } from 'lucide-react';
 import {
   type CsvNode,
   type FolderNode,
@@ -102,6 +102,9 @@ export function Sidebar() {
       <div className="tree">
         <div className="tree-heading">
           <p className="tree-title">工作区</p>
+          <button type="button" title="刷新工作区" aria-label="刷新工作区" onClick={() => void load()}>
+            <RefreshCw size={14} />
+          </button>
           <button type="button" title="新建项目" aria-label="新建项目" onClick={createProjectDialog}>
             <Plus size={14} />
           </button>

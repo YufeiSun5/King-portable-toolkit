@@ -42,6 +42,10 @@ export function DeleteRestorePoint(arg1) {
   return window['go']['api']['AppAPI']['DeleteRestorePoint'](arg1);
 }
 
+export function GetDeviceMacAddress() {
+  return window['go']['api']['AppAPI']['GetDeviceMacAddress']();
+}
+
 export function GetFieldMetadata() {
   return window['go']['api']['AppAPI']['GetFieldMetadata']();
 }
@@ -88,6 +92,18 @@ export function RenameProject(arg1, arg2) {
 
 export function RestoreProject(arg1, arg2) {
   return window['go']['api']['AppAPI']['RestoreProject'](arg1, arg2);
+}
+
+export function SaveImportedKioCsv(arg1, arg2, arg3) {
+  return window['go']['api']['AppAPI']['SaveImportedKioCsv'](arg1, arg2, arg3);
+}
+
+export function SaveKioExportFiles(arg1) {
+  return window['go']['api']['AppAPI']['SaveKioExportFiles'](arg1);
+}
+
+export function Startup(arg1) {
+  return window['go']['api']['AppAPI']['Startup'](arg1);
 }
 
 export function UpdateCell(arg1, arg2, arg3) {

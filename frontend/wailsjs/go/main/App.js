@@ -5,3 +5,7 @@
 export function AppName() {
   return window['go']['main']['App']['AppName']();
 }
+
+export function Startup(arg1) {
+  return window['go']['main']['App']['Startup'](arg1);
+}

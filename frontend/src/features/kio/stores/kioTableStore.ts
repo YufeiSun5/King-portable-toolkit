@@ -2,9 +2,10 @@
 // 联动 backend/api KIO Binding、wailsjs 生成类型和 KIO 页面。
 
 import { create } from 'zustand';
-import { loadFieldMetadataSafe } from '../../../utils/wails';
+import { loadFieldMetadataSafe, loadKioProjectSafe } from '../../../utils/wails';
 import { nextBitAddress } from '../../../utils/table';
 import type { KioFieldMetadata, KioVariable } from '../types/kio';
+import { findInvalidKioNameChars, isKioNameColumn, kioNameInvalidCharsText, sanitizeKioName } from '../utils/kioNameRules';
 
 export type SearchCondition = {
   id: string;
@@ -18,6 +19,7 @@ export type KioSaveHistoryEntry = {
   title: string;
   createdAt: string;
   scopeName: string;
+  deviceAddress?: string;
   rows: KioVariable[];
 };
 
@@ -35,6 +37,7 @@ type KioTableState = {
   lastAction: string;
   isDirty: boolean;
   loadMetadata: () => Promise<void>;
+  loadCsvRows: (csvFileId: string) => Promise<void>;
   selectRow: (rowId: string) => void;
   toggleManualRowSelection: (rowId: string) => void;
   setManualRowSelection: (rowIds: string[]) => void;
@@ -54,8 +57,8 @@ type KioTableState = {
   removeSearchCondition: (conditionId: string) => void;
   clearSearchConditions: () => void;
   toggleAllFields: () => void;
-  markSaved: (title?: string, scopeName?: string) => void;
-  validateRows: () => { errors: string[]; warnings: string[] };
+  markSaved: (title?: string, scopeName?: string, snapshotRows?: KioVariable[], deviceAddress?: string) => void;
+  validateRows: (targetRows?: KioVariable[]) => { errors: string[]; warnings: string[] };
   exportCsvText: () => string;
 };
 
@@ -64,6 +67,11 @@ type ColumnOperationOptions = {
   findText?: string;
   replaceText?: string;
   template?: string;
+  numberPrefix?: string;
+  numberSuffix?: string;
+  numberStart?: number;
+  numberWidth?: number;
+  numberDirection?: 'up' | 'down';
   targetRowIds?: string[];
 };
 
@@ -71,6 +79,7 @@ const defaultColumns = [
   'TagID',
   'TagName',
   'Description',
+  'TagDataType',
   'ChannelName',
   'DeviceName',
   'TagGroup',
@@ -105,7 +114,7 @@ const sampleRows: KioVariable[] = Array.from({ length: 12 }, (_, index) => {
     hisInterval: '60000',
     fields: {
       TagType: 'IO',
-      TagDataType: 'Bool',
+      TagDataType: 'IODisc',
       ChannelDriver: 'S7',
       RegName: 'DB',
       RegType: 'BIT',
@@ -141,6 +150,30 @@ export const useKioTableStore = create<KioTableState>((set, get) => ({
     const metadata = await loadFieldMetadataSafe();
     set({ metadata: metadata as KioFieldMetadata[] });
   },
+  loadCsvRows: async (csvFileId) => {
+    const project = await loadKioProjectSafe(csvFileId);
+    if (!project) {
+      return;
+    }
+    const variables = (project.variables ?? []) as Array<KioVariable & { rowIndex?: number; projectId?: string; folderId?: string }>;
+    const rows = normalizeRows(
+      variables.map((variable) => ({
+        ...variable,
+        projectId: variable.projectId ?? project.csvFile?.projectId ?? '',
+        folderId: variable.folderId ?? project.csvFile?.folderId ?? '',
+        csvFileId,
+        fields: variable.fields ?? {},
+      })),
+    );
+    set((state) => ({
+      rows: [...state.rows.filter((row) => row.csvFileId !== csvFileId), ...rows],
+      savedRows: [...state.savedRows.filter((row) => row.csvFileId !== csvFileId), ...cloneVariableRows(rows)],
+      selectedRowId: rows[0]?.id ?? state.selectedRowId,
+      manualSelectedRowIds: [],
+      lastAction: rows.length ? `已从数据库加载 ${project.csvFile?.name ?? 'CSV'}：${rows.length} 个变量` : `数据库中 ${project.csvFile?.name ?? 'CSV'} 暂无变量`,
+      isDirty: false,
+    }));
+  },
   selectRow: (selectedRowId) => set({ selectedRowId }),
   toggleManualRowSelection: (rowId) =>
     set((state) => ({
@@ -152,19 +185,22 @@ export const useKioTableStore = create<KioTableState>((set, get) => ({
   setManualRowSelection: (manualSelectedRowIds) => set({ manualSelectedRowIds, lastAction: manualSelectedRowIds.length ? `已手动选择 ${manualSelectedRowIds.length} 个变量` : '已清空手动选择' }),
   clearManualRowSelection: () => set({ manualSelectedRowIds: [], lastAction: '已清空手动选择' }),
   updateCell: (rowId, columnName, value) =>
-    set((state) => ({
-      rows: state.rows.map((row) =>
-        row.id === rowId
-          ? {
-              ...row,
-              fields: { ...row.fields, [columnName]: value },
-              ...mapDisplayColumn(columnName, value),
-            }
-          : row,
-      ),
-      lastAction: `已编辑 ${columnName}`,
-      isDirty: true,
-    })),
+    set((state) => {
+      const nextValue = normalizeCellInput(columnName, value);
+      return {
+        rows: state.rows.map((row) =>
+          row.id === rowId
+            ? {
+                ...row,
+                fields: { ...row.fields, [columnName]: nextValue },
+                ...mapDisplayColumn(columnName, nextValue),
+              }
+            : row,
+        ),
+        lastAction: nextValue === value ? `已编辑 ${columnName}` : `已按 KIO 限制移除变量名无效字符：${kioNameInvalidCharsText}`,
+        isDirty: true,
+      };
+    }),
   applyCellValueToColumn: (rowId, columnName, targetRowIds) =>
     set((state) => {
       const source = state.rows.find((row) => row.id === rowId);
@@ -235,13 +271,18 @@ export const useKioTableStore = create<KioTableState>((set, get) => ({
       };
     }),
   importRows: (rows, sourceName) =>
-    set((state) => ({
-      rows: [...state.rows.filter((row) => row.csvFileId !== rows[0]?.csvFileId), ...rows],
-      selectedRowId: rows[0]?.id ?? state.selectedRowId,
-      manualSelectedRowIds: [],
-      lastAction: `已导入 ${sourceName}：${rows.length} 个变量`,
-      isDirty: true,
-    })),
+    set((state) => {
+      const nextRows = [...state.rows.filter((row) => row.csvFileId !== rows[0]?.csvFileId), ...rows];
+      saveLocalRows(nextRows);
+      return {
+        rows: nextRows,
+        savedRows: [...state.savedRows.filter((row) => row.csvFileId !== rows[0]?.csvFileId), ...cloneVariableRows(rows)],
+        selectedRowId: rows[0]?.id ?? state.selectedRowId,
+        manualSelectedRowIds: [],
+        lastAction: `已导入 ${sourceName}：${rows.length} 个变量`,
+        isDirty: true,
+      };
+    }),
   deleteVariable: (rowId) =>
     set((state) => {
       const targetID = rowId || state.selectedRowId;
@@ -291,14 +332,16 @@ export const useKioTableStore = create<KioTableState>((set, get) => ({
       showAllFields: !state.showAllFields,
       lastAction: state.showAllFields ? '已切换到简洁模式' : '已切换到全量模式',
     })),
-  markSaved: (title = '保存当前文件', scopeName = '当前选中层级') => {
+  markSaved: (title = '保存当前文件', scopeName = '当前选中层级', snapshotRows, deviceAddress) => {
     const { rows } = get();
+    const restoreRows = snapshotRows ?? rows;
     const entry: KioSaveHistoryEntry = {
       id: `save-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       title,
       createdAt: new Date().toISOString(),
       scopeName,
-      rows: cloneVariableRows(rows),
+      deviceAddress,
+      rows: cloneVariableRows(restoreRows),
     };
     saveLocalRows(rows);
     set((state) => {
@@ -307,8 +350,8 @@ export const useKioTableStore = create<KioTableState>((set, get) => ({
       return { savedRows: cloneVariableRows(rows), saveHistory, isDirty: false, lastAction: '已保存，当前没有未保存变动' };
     });
   },
-  validateRows: () => {
-    const { rows } = get();
+  validateRows: (targetRows) => {
+    const rows = targetRows ?? get().rows;
     const tagNames = new Map<string, number>();
     const itemNames = new Map<string, number>();
     const errors: string[] = [];
@@ -319,6 +362,9 @@ export const useKioTableStore = create<KioTableState>((set, get) => ({
       if (!row.tagName.trim()) {
         errors.push(`第 ${rowNo} 行变量名为空`);
       }
+      validateKioNameField(errors, rowNo, '变量名', row.tagName);
+      validateKioNameField(errors, rowNo, '通道', row.channelName);
+      validateKioNameField(errors, rowNo, '设备', row.deviceName);
       if (!row.itemName.trim()) {
         errors.push(`第 ${rowNo} 行 PLC 地址为空`);
       }
@@ -413,10 +459,19 @@ function applyColumnOperation(rows: KioVariable[], columnName: string, operation
     return patchTargets((row) => `${options.value ?? ''}${readCell(row, columnName)}`);
   }
   if (operationType === 'numberFill') {
-    if (!options.template) {
+    if (options.numberPrefix === undefined && !options.template) {
       return rows;
     }
-    return patchTargets((row, index) => options.template?.replace('{NN}', String(index + 1).padStart(2, '0')) ?? readCell(row, columnName));
+    const start = Number.isFinite(options.numberStart) ? options.numberStart ?? 1 : 1;
+    const width = Math.max(1, options.numberWidth ?? 2);
+    const direction = options.numberDirection === 'down' ? -1 : 1;
+    if (options.template) {
+      return patchTargets((row, index) => options.template?.replace('{NN}', String(start + index * direction).padStart(width, '0')) ?? readCell(row, columnName));
+    }
+    return patchTargets((_row, index) => {
+      const nextNumber = start + index * direction;
+      return `${options.numberPrefix ?? ''}${String(nextNumber).padStart(width, '0')}${options.numberSuffix ?? ''}`;
+    });
   }
   if (operationType === 'addressFill') {
     return patchTargets((_row, index) => nextBitAddress(103, 1, 0, index));
@@ -425,11 +480,23 @@ function applyColumnOperation(rows: KioVariable[], columnName: string, operation
 }
 
 function patchCell(row: KioVariable, columnName: string, value: string): KioVariable {
+  const nextValue = normalizeCellInput(columnName, value);
   return {
     ...row,
-    fields: { ...row.fields, [columnName]: value },
-    ...mapDisplayColumn(columnName, value),
+    fields: { ...row.fields, [columnName]: nextValue },
+    ...mapDisplayColumn(columnName, nextValue),
   };
+}
+
+function normalizeCellInput(columnName: string, value: string) {
+  return isKioNameColumn(columnName) ? sanitizeKioName(value) : value;
+}
+
+function validateKioNameField(errors: string[], rowNo: number, label: string, value: string) {
+  const invalidChars = findInvalidKioNameChars(value);
+  if (invalidChars.length > 0) {
+    errors.push(`第 ${rowNo} 行${label}包含 KIO 无效字符：${invalidChars.join(' ')}；禁止字符：${kioNameInvalidCharsText}`);
+  }
 }
 
 function readCell(row: KioVariable, columnName: string) {
@@ -462,14 +529,14 @@ function createVariableFromTemplate(template: KioVariable | undefined, index: nu
       collectInterval: '1000',
       hisRecordMode: '0',
       hisInterval: '60000',
-      fields: {},
+      fields: { TagDataType: 'IODisc' },
     };
   }
   return {
     ...template,
     id: `row-${Date.now()}`,
     tagId: '',
-    tagName: `${template.tagName}_新${no}`,
+    tagName: sanitizeKioName(`${template.tagName}_新${no}`),
     description: `${template.description}_新${no}`,
     itemName: nextBitAddress(103, 1, 0, index),
     fields: { ...template.fields, TagID: '' },
@@ -482,7 +549,7 @@ function copyVariableRow(source: KioVariable, index: number): KioVariable {
     ...source,
     id: `row-copy-${Date.now()}`,
     tagId: '',
-    tagName: `${source.tagName}_副本${no}`,
+    tagName: sanitizeKioName(`${source.tagName}_副本${no}`),
     description: `${source.description}_副本${no}`,
     fields: { ...source.fields, TagID: '' },
   };
@@ -501,7 +568,7 @@ function copyVariableRowToFolder(
     folderId: target.folderId,
     csvFileId: target.csvFileId,
     tagId: '',
-    tagName: `${source.tagName}_复制${no}`,
+    tagName: sanitizeKioName(`${source.tagName}_复制${no}`),
     description: `${source.description}_复制${no}`,
     fields: { ...source.fields, TagID: '' },
   };
@@ -566,7 +633,7 @@ function normalizeRows(rows: KioVariable[]) {
         folderId: row.folderId ?? '',
         csvFileId: row.csvFileId ?? '',
         tagId: row.tagId ?? '',
-        tagName: row.tagName ?? '',
+        tagName: sanitizeKioName(row.tagName ?? ''),
         description: row.description ?? '',
         channelName: row.channelName ?? '',
         deviceName: row.deviceName ?? '',
@@ -578,7 +645,15 @@ function normalizeRows(rows: KioVariable[]) {
         collectInterval: row.collectInterval ?? '',
         hisRecordMode: row.hisRecordMode ?? '',
         hisInterval: row.hisInterval ?? '',
-        fields: { ...(row.fields ?? {}) },
+        fields: normalizeFields(row.fields ?? {}),
       }))
     : [];
+}
+
+function normalizeFields(fields: KioVariable['fields']) {
+  const next = { ...fields };
+  if (next.TagDataType === 'Bool') {
+    next.TagDataType = 'IODisc';
+  }
+  return next;
 }

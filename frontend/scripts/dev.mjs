@@ -4,7 +4,7 @@
 import { spawn } from 'node:child_process';
 import { execPath } from 'node:process';
 
-const child = spawn(execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1'], {
+const child = spawn(execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '34215', '--strictPort'], {
   stdio: 'inherit',
   shell: false,
 });

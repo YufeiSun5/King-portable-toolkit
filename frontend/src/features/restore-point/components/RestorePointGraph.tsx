@@ -10,7 +10,6 @@ import type { KioFieldMetadata, KioVariable } from '../../kio/types/kio';
 type RestorePointGraphProps = {
   currentName: string;
   currentRows: KioVariable[];
-  savedRows: KioVariable[];
   saveHistory: KioSaveHistoryEntry[];
   metadata: KioFieldMetadata[];
   visibleColumns: string[];
@@ -43,13 +42,13 @@ type DiffRow = {
   rowKind: DiffKind;
 };
 
-export function RestorePointGraph({ currentName, currentRows, savedRows, saveHistory, metadata, visibleColumns, showAllFields, onClose }: RestorePointGraphProps) {
+export function RestorePointGraph({ currentName, currentRows, saveHistory, metadata, visibleColumns, showAllFields, onClose }: RestorePointGraphProps) {
   const currentScrollRef = useRef<HTMLDivElement | null>(null);
   const restoreScrollRef = useRef<HTMLDivElement | null>(null);
   const syncingRef = useRef(false);
   const columns = useMemo(() => buildColumns(metadata, visibleColumns, showAllFields), [metadata, showAllFields, visibleColumns]);
   const columnLabels = useMemo(() => Object.fromEntries(metadata.map((field) => [field.columnName, field.displayName || field.columnName])), [metadata]);
-  const restorePoints = useMemo(() => buildRestorePoints(saveHistory, savedRows), [saveHistory, savedRows]);
+  const restorePoints = useMemo(() => buildRestorePoints(saveHistory), [saveHistory]);
   const [selectedId, setSelectedId] = useState('');
   const selected = restorePoints.find((point) => point.id === selectedId) ?? restorePoints[0];
   const restoreRows = selected?.rows ?? [];
@@ -205,29 +204,19 @@ function buildColumns(metadata: KioFieldMetadata[], visibleColumns: string[], sh
   return visibleColumns;
 }
 
-function buildRestorePoints(saveHistory: KioSaveHistoryEntry[], savedRows: KioVariable[]) {
-  const scopedHistory = saveHistory
+function buildRestorePoints(saveHistory: KioSaveHistoryEntry[]) {
+  return saveHistory
     .filter((entry) => entry.rows.length > 0)
     .map((entry) => ({
       id: entry.id,
-      title: entry.title,
-      meta: `${formatSaveTime(entry.createdAt)} · ${entry.scopeName} · ${entry.rows.length} 行`,
+      title: formatSaveTime(entry.createdAt),
+      meta: `${entry.deviceAddress || legacyActionLabel(entry.title)} · ${entry.scopeName} · ${entry.rows.length} 行`,
       rows: entry.rows.map(cloneRow),
     }));
-  if (scopedHistory.length) {
-    return scopedHistory;
-  }
-  if (!savedRows.length) {
-    return [];
-  }
-  return [
-    {
-      id: 'last-saved',
-      title: '当前已保存版本',
-      meta: `加载时快照 · ${savedRows.length} 行`,
-      rows: savedRows.map(cloneRow),
-    },
-  ];
+}
+
+function legacyActionLabel(title: string) {
+  return title === '保存全部' || title === '保存当前文件' ? '旧记录' : title;
 }
 
 function buildDiffRows(currentRows: KioVariable[], restoreRows: KioVariable[]): DiffRow[] {

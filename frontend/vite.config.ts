@@ -8,7 +8,13 @@ export default defineConfig({
   plugins: [react()],
   clearScreen: false,
   server: {
-    strictPort: false,
+    host: '127.0.0.1',
+    port: 34215,
+    strictPort: true,
+  },
+  preview: {
+    host: '127.0.0.1',
+    port: 34215,
+    strictPort: true,
   },
 });
-

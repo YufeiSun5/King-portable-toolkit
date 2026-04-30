@@ -4,6 +4,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 
@@ -13,11 +14,16 @@ import (
 )
 
 type AppAPI struct {
-	db *database.Database
+	ctx context.Context
+	db  *database.Database
 }
 
 func NewAppAPI(db *database.Database) *AppAPI {
 	return &AppAPI{db: db}
+}
+
+func (a *AppAPI) Startup(ctx context.Context) {
+	a.ctx = ctx
 }
 
 func (a *AppAPI) LoadWorkspaceTree() (*domain.WorkspaceTree, error) {
